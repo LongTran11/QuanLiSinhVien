@@ -1,28 +1,12 @@
-import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 dotenv.config()
 
-import User from '../models/User'
-import Class from '../models/Class'
-import Student from '../models/Student'
-import Semester from '../models/Semester'
-import Subject from '../models/Subject'
-import Grade from '../models/Grade'
-import ForumPost from '../models/ForumPost'
-
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/cvht_db'
+import { User, Class, Student, Semester, Subject, Grade, ForumPost } from '../models'
+import sequelize from '../config/database'
 
 async function seed() {
-  await mongoose.connect(MONGO_URI)
-  console.log('✅ Connected to MongoDB')
-
-  // Xóa dữ liệu cũ
-  await Promise.all([
-    User.deleteMany({}), Class.deleteMany({}), Student.deleteMany({}),
-    Semester.deleteMany({}), Subject.deleteMany({}), Grade.deleteMany({}),
-    ForumPost.deleteMany({}),
-  ])
-  console.log('🗑️  Cleared old data')
+  await sequelize.sync({ force: true }) // WARNING: This drops tables and recreates them
+  console.log('✅ MySQL tables recreated')
 
   // ── Users ──
   const cvht = await User.create({
@@ -36,7 +20,7 @@ async function seed() {
   console.log('👤 Created CVHT + Admin users')
 
   // ── Semesters ──
-  const semesters = await Semester.insertMany([
+  const semesters = await Semester.bulkCreate([
     { semesterId: 'HK1-2023', name: 'HK1/2023', startDate: '2023-09-01', endDate: '2024-01-15' },
     { semesterId: 'HK2-2023', name: 'HK2/2023', startDate: '2024-01-20', endDate: '2024-06-15' },
     { semesterId: 'HK1-2024', name: 'HK1/2024', startDate: '2024-09-01', endDate: '2025-01-15' },
@@ -45,7 +29,7 @@ async function seed() {
   console.log('📅 Created semesters')
 
   // ── Subjects ──
-  const subjects = await Subject.insertMany([
+  const subjects = await Subject.bulkCreate([
     { code: 'INT1001', name: 'Nhập môn lập trình',          credits: 3 },
     { code: 'INT1002', name: 'Kỹ thuật lập trình',          credits: 3 },
     { code: 'MAT1001', name: 'Giải tích 1',                 credits: 3 },
@@ -61,7 +45,7 @@ async function seed() {
 
   // ── Class ──
   const cls = await Class.create({
-    name: 'K23-CNTT-01', year: 2022, advisorId: cvht._id,
+    name: 'K23-CNTT-01', year: 2022, advisorId: cvht.id,
   })
 
   // ── Students ──
@@ -91,40 +75,39 @@ async function seed() {
     '22020010': [6.5,6.0,7.0,6.0,6.5,6.0,7.0,6.5,5.5,6.0],
   }
 
-  const studentIds: mongoose.Types.ObjectId[] = []
+  const studentIds: number[] = []
   for (const sd of studentData) {
     const user = await User.create({ name: sd.name, email: sd.email, password: sd.studentId, role: 'student', studentId: sd.studentId })
-    const student = await Student.create({ userId: user._id, ...sd, classId: cls._id, status: sd.status })
-    studentIds.push(student._id as mongoose.Types.ObjectId)
+    const student = await Student.create({ userId: user.id, ...sd, classId: cls.id, status: sd.status as any })
+    studentIds.push(student.id)
 
     // Grades
     const scores = baseScores[sd.studentId] || Array(10).fill(6.0)
     for (let i = 0; i < subjects.length; i++) {
       const semIdx = i < 5 ? 2 : 3   // HK1-2024 or HK2-2024
       await Grade.create({
-        studentId:  student._id,
-        subjectId:  subjects[i]._id,
-        semesterId: semesters[semIdx]._id,
-        classId:    cls._id,
+        studentId:  student.id,
+        subjectId:  subjects[i].id,
+        semesterId: semesters[semIdx].id,
+        classId:    cls.id,
         score10:    scores[i],
       })
     }
   }
 
-  await Class.findByIdAndUpdate(cls._id, { students: studentIds })
   console.log(`🎓 Created ${studentData.length} students with grades`)
 
   // ── Forum Posts ──
-  await ForumPost.insertMany([
+  await ForumPost.bulkCreate([
     {
-      classId: cls._id, authorId: cvht._id, authorName: 'TRẦN ĐỨC LONG', authorRole: 'cvht',
+      classId: cls.id, authorId: cvht.id, authorName: 'TRẦN ĐỨC LONG', authorRole: 'cvht',
       content: '📢 Các em lưu ý: Deadline đăng ký môn học HK1/2025 là ngày 15/6/2025. Các em vào cổng đăng ký sớm để tránh hết chỗ nhé!',
-      isPinned: true, likes: [],
+      isPinned: true, likes: [], comments: []
     },
     {
-      classId: cls._id, authorId: studentIds[1], authorName: 'Trần Thị Bình', authorRole: 'student',
+      classId: cls.id, authorId: studentIds[1], authorName: 'Trần Thị Bình', authorRole: 'student',
       content: 'Mọi người ơi ai có tài liệu môn Mạng máy tính không chia sẻ cho mình với ạ? Mình đang cần gấp để ôn thi cuối kỳ 😭',
-      likes: [],
+      likes: [], comments: []
     },
   ])
   console.log('💬 Created forum posts')
@@ -136,7 +119,7 @@ async function seed() {
   console.log('🔑 Tài khoản SV    : 22020001@ut.edu.vn / 22020001')
   console.log('─'.repeat(40))
 
-  await mongoose.disconnect()
+  await sequelize.close()
 }
 
 seed().catch(err => { console.error(err); process.exit(1) })

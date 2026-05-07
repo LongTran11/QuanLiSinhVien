@@ -1,48 +1,68 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 import bcrypt from 'bcryptjs'
 
 export type UserRole = 'cvht' | 'student' | 'admin'
 
-export interface IUser extends Document {
-  _id: mongoose.Types.ObjectId
+export interface UserAttributes {
+  id: number
   name: string
   email: string
   password: string
   role: UserRole
-  studentId?: string        // MSSV (nếu là sinh viên)
+  studentId?: string
   phone?: string
   avatar?: string
   isActive: boolean
-  createdAt: Date
-  updatedAt: Date
-  comparePassword(candidate: string): Promise<boolean>
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const UserSchema = new Schema<IUser>({
-  name:      { type: String, required: true, trim: true },
-  email:     { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password:  { type: String, required: true, minlength: 6 },
-  role:      { type: String, enum: ['cvht', 'student', 'admin'], default: 'student' },
-  studentId: { type: String, unique: true, sparse: true },
-  phone:     { type: String },
-  avatar:    { type: String },
-  isActive:  { type: Boolean, default: true },
-}, { timestamps: true })
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'isActive'> {}
 
-// Hash password trước khi save
-UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next()
-  this.password = await bcrypt.hash(this.password, 12)
-  next()
-})
+class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
+  declare id: number
+  declare name: string
+  declare email: string
+  declare password: string
+  declare role: UserRole
+  declare studentId: string | undefined
+  declare phone: string | undefined
+  declare avatar: string | undefined
+  declare isActive: boolean
+  declare createdAt: Date
+  declare updatedAt: Date
 
-UserSchema.methods.comparePassword = async function (candidate: string): Promise<boolean> {
-  return bcrypt.compare(candidate, this.password)
+  async comparePassword(candidate: string): Promise<boolean> {
+    return bcrypt.compare(candidate, this.password)
+  }
+
+  toSafeJSON() {
+    const { password: _p, ...rest } = this.toJSON() as UserAttributes
+    return rest
+  }
 }
 
-// Ẩn password khi trả về JSON
-UserSchema.set('toJSON', {
-  transform: (_doc, ret) => { const { password: _p, ...rest } = ret; return rest }
+User.init({
+  id:        { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  name:      { type: DataTypes.STRING(200), allowNull: false },
+  email:     { type: DataTypes.STRING(200), allowNull: false, unique: true },
+  password:  { type: DataTypes.STRING(200), allowNull: false },
+  role:      { type: DataTypes.ENUM('cvht', 'student', 'admin'), defaultValue: 'student' },
+  studentId: { type: DataTypes.STRING(50), unique: true, allowNull: true },
+  phone:     { type: DataTypes.STRING(20), allowNull: true },
+  avatar:    { type: DataTypes.TEXT, allowNull: true },
+  isActive:  { type: DataTypes.BOOLEAN, defaultValue: true },
+}, {
+  sequelize,
+  tableName: 'users',
+  hooks: {
+    beforeSave: async (user) => {
+      if (user.changed('password')) {
+        user.password = await bcrypt.hash(user.password, 12)
+      }
+    },
+  },
 })
 
-export default mongoose.model<IUser>('User', UserSchema)
+export default User

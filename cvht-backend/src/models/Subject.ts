@@ -1,19 +1,37 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
-export interface ISubject extends Document {
-  _id: mongoose.Types.ObjectId
+export interface SubjectAttributes {
+  id: number
   code: string
   name: string
   credits: number
   department: string
-  createdAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const SubjectSchema = new Schema<ISubject>({
-  code:       { type: String, required: true, unique: true },
-  name:       { type: String, required: true },
-  credits:    { type: Number, required: true, min: 1, max: 10 },
-  department: { type: String, default: 'Khoa CNTT' },
-}, { timestamps: true })
+interface SubjectCreationAttributes extends Optional<SubjectAttributes, 'id' | 'department'> {}
 
-export default mongoose.model<ISubject>('Subject', SubjectSchema)
+class Subject extends Model<SubjectAttributes, SubjectCreationAttributes> implements SubjectAttributes {
+  declare id: number
+  declare code: string
+  declare name: string
+  declare credits: number
+  declare department: string
+  declare createdAt: Date
+  declare updatedAt: Date
+}
+
+Subject.init({
+  id:         { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  code:       { type: DataTypes.STRING(50), allowNull: false, unique: true },
+  name:       { type: DataTypes.STRING(200), allowNull: false },
+  credits:    { type: DataTypes.INTEGER, allowNull: false },
+  department: { type: DataTypes.STRING(200), defaultValue: 'Khoa CNTT' },
+}, {
+  sequelize,
+  tableName: 'subjects',
+})
+
+export default Subject

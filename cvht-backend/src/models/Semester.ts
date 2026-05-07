@@ -1,21 +1,40 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
-export interface ISemester extends Document {
-  _id: mongoose.Types.ObjectId
-  semesterId: string   // VD: HK1-2024
-  name: string         // VD: HK1/2024
+export interface SemesterAttributes {
+  id: number
+  semesterId: string
+  name: string
   startDate: string
   endDate: string
   isActive: boolean
-  createdAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const SemesterSchema = new Schema<ISemester>({
-  semesterId: { type: String, required: true, unique: true },
-  name:       { type: String, required: true },
-  startDate:  { type: String, required: true },
-  endDate:    { type: String, required: true },
-  isActive:   { type: Boolean, default: false },
-}, { timestamps: true })
+interface SemesterCreationAttributes extends Optional<SemesterAttributes, 'id' | 'isActive'> {}
 
-export default mongoose.model<ISemester>('Semester', SemesterSchema)
+class Semester extends Model<SemesterAttributes, SemesterCreationAttributes> implements SemesterAttributes {
+  declare id: number
+  declare semesterId: string
+  declare name: string
+  declare startDate: string
+  declare endDate: string
+  declare isActive: boolean
+  declare createdAt: Date
+  declare updatedAt: Date
+}
+
+Semester.init({
+  id:         { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  semesterId: { type: DataTypes.STRING(50), allowNull: false, unique: true },
+  name:       { type: DataTypes.STRING(100), allowNull: false },
+  startDate:  { type: DataTypes.STRING(20), allowNull: false },
+  endDate:    { type: DataTypes.STRING(20), allowNull: false },
+  isActive:   { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  sequelize,
+  tableName: 'semesters',
+})
+
+export default Semester

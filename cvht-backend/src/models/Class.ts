@@ -1,22 +1,39 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
-export interface IClass extends Document {
-  _id: mongoose.Types.ObjectId
-  name: string          // VD: K23-CNTT-01
-  year: number          // Khóa học VD: 2022
-  advisorId: mongoose.Types.ObjectId   // CVHT
-  students: mongoose.Types.ObjectId[]  // Danh sách SV
+export type StudentStatus = 'normal' | 'warn1' | 'warn2' | 'warn3' | 'debt' | 'suspended'
+
+export interface ClassAttributes {
+  id: number
+  name: string
+  year: number
+  advisorId: number
   isActive: boolean
-  createdAt: Date
-  updatedAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const ClassSchema = new Schema<IClass>({
-  name:      { type: String, required: true, unique: true, trim: true },
-  year:      { type: Number, required: true },
-  advisorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  students:  [{ type: Schema.Types.ObjectId, ref: 'User' }],
-  isActive:  { type: Boolean, default: true },
-}, { timestamps: true })
+interface ClassCreationAttributes extends Optional<ClassAttributes, 'id' | 'isActive'> {}
 
-export default mongoose.model<IClass>('Class', ClassSchema)
+class Class extends Model<ClassAttributes, ClassCreationAttributes> implements ClassAttributes {
+  declare id: number
+  declare name: string
+  declare year: number
+  declare advisorId: number
+  declare isActive: boolean
+  declare createdAt: Date
+  declare updatedAt: Date
+}
+
+Class.init({
+  id:        { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  name:      { type: DataTypes.STRING(100), allowNull: false, unique: true },
+  year:      { type: DataTypes.INTEGER, allowNull: false },
+  advisorId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  isActive:  { type: DataTypes.BOOLEAN, defaultValue: true },
+}, {
+  sequelize,
+  tableName: 'classes',
+})
+
+export default Class

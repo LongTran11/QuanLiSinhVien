@@ -1,25 +1,45 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
 export type NotifType = 'message' | 'forum' | 'grade' | 'system'
 
-export interface INotification extends Document {
-  _id: mongoose.Types.ObjectId
-  userId: mongoose.Types.ObjectId
+export interface NotificationAttributes {
+  id: number
+  userId: number
   type: NotifType
   content: string
   link?: string
   read: boolean
-  createdAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const NotificationSchema = new Schema<INotification>({
-  userId:  { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  type:    { type: String, enum: ['message','forum','grade','system'], required: true },
-  content: { type: String, required: true },
-  link:    { type: String },
-  read:    { type: Boolean, default: false },
-}, { timestamps: true })
+interface NotificationCreationAttributes extends Optional<NotificationAttributes, 'id' | 'link' | 'read'> {}
 
-NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 })
+class Notification extends Model<NotificationAttributes, NotificationCreationAttributes> implements NotificationAttributes {
+  declare id: number
+  declare userId: number
+  declare type: NotifType
+  declare content: string
+  declare link: string | undefined
+  declare read: boolean
+  declare createdAt: Date
+  declare updatedAt: Date
+}
 
-export default mongoose.model<INotification>('Notification', NotificationSchema)
+Notification.init({
+  id:      { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  userId:  { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  type:    { type: DataTypes.ENUM('message', 'forum', 'grade', 'system'), allowNull: false },
+  content: { type: DataTypes.STRING(1000), allowNull: false },
+  link:    { type: DataTypes.STRING(500), allowNull: true },
+  read:    { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  sequelize,
+  tableName: 'notifications',
+  indexes: [
+    { fields: ['userId', 'read', 'createdAt'] }
+  ]
+})
+
+export default Notification

@@ -2,7 +2,7 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 function getToken(): string | null {
-  return localStorage.getItem('cvht_token')
+  return localStorage.getItem('cvht_token') || localStorage.getItem('token')
 }
 
 interface RequestOptions {
@@ -102,4 +102,12 @@ export const semesterApi = {
 }
 export const subjectApi = {
   getAll: () => request('/subjects'),
+}
+
+// ── Database ─────────────────────────────────────────────
+export const databaseApi = {
+  importStudents:  (data: any[]) => request('/database/import/students',  { method: 'POST', body: { data } }),
+  importGrades:    (data: any[]) => request('/database/import/grades',    { method: 'POST', body: { data } }),
+  importSemesters: (data: any[]) => request('/database/import/semesters', { method: 'POST', body: { data } }),
+  importSubjects:  (data: any[]) => request('/database/import/subjects',  { method: 'POST', body: { data } }),
 }

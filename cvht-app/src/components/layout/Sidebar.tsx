@@ -1,8 +1,9 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, BookOpen, MessageCircle, Mail, BarChart2, Database, ChevronDown } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, Users, BookOpen, MessageCircle, Mail, BarChart2, Database, ChevronDown, LogOut } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { cn } from '../../lib/utils'
 import { useState } from 'react'
+import { clearAuth } from '../../lib/auth'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -15,13 +16,19 @@ const navItems = [
 ]
 
 export function Sidebar() {
+  const navigate = useNavigate()
   const { currentClassId, setCurrentClassId, classes, addClass } = useAppStore()
   const [showClassMenu, setShowClassMenu] = useState(false)
   const [newClass, setNewClass] = useState('')
 
+  const handleLogout = () => {
+    clearAuth()
+    navigate('/login')
+  }
+
   return (
     <aside className="fixed left-0 top-14 bottom-0 w-60 bg-white border-r border-gray-200 flex flex-col z-40 overflow-y-auto">
-      {/* Class selector */}
+      {/* ... (phần Class selector giữ nguyên) ... */}
       <div className="p-3 border-b border-gray-100">
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 px-2">Lớp quản lý</p>
         <button
@@ -88,6 +95,17 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Logout */}
+      <div className="p-3 border-t border-gray-100">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors"
+        >
+          <LogOut size={16} />
+          Đăng xuất
+        </button>
+      </div>
     </aside>
   )
 }

@@ -1,22 +1,41 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
-export interface IMessage extends Document {
-  _id: mongoose.Types.ObjectId
-  senderId: mongoose.Types.ObjectId
-  receiverId: mongoose.Types.ObjectId
+export interface MessageAttributes {
+  id: number
+  senderId: number
+  receiverId: number
   content: string
   read: boolean
-  createdAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const MessageSchema = new Schema<IMessage>({
-  senderId:   { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  receiverId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  content:    { type: String, required: true, maxlength: 2000 },
-  read:       { type: Boolean, default: false },
-}, { timestamps: true })
+interface MessageCreationAttributes extends Optional<MessageAttributes, 'id' | 'read'> {}
 
-MessageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 })
-MessageSchema.index({ receiverId: 1, read: 1 })
+class Message extends Model<MessageAttributes, MessageCreationAttributes> implements MessageAttributes {
+  declare id: number
+  declare senderId: number
+  declare receiverId: number
+  declare content: string
+  declare read: boolean
+  declare createdAt: Date
+  declare updatedAt: Date
+}
 
-export default mongoose.model<IMessage>('Message', MessageSchema)
+Message.init({
+  id:         { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  senderId:   { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  receiverId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  content:    { type: DataTypes.STRING(2000), allowNull: false },
+  read:       { type: DataTypes.BOOLEAN, defaultValue: false },
+}, {
+  sequelize,
+  tableName: 'messages',
+  indexes: [
+    { fields: ['senderId', 'receiverId', 'createdAt'] },
+    { fields: ['receiverId', 'read'] }
+  ]
+})
+
+export default Message

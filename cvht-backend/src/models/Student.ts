@@ -1,32 +1,54 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import { DataTypes, Model, Optional } from 'sequelize'
+import sequelize from '../config/database'
 
 export type StudentStatus = 'normal' | 'warn1' | 'warn2' | 'warn3' | 'debt' | 'suspended'
 
-export interface IStudent extends Document {
-  _id: mongoose.Types.ObjectId
-  userId: mongoose.Types.ObjectId
-  studentId: string         // MSSV
-  classId: mongoose.Types.ObjectId
+export interface StudentAttributes {
+  id: number
+  userId: number
+  studentId: string
+  classId: number
   name: string
   email: string
   phone: string
   dob: string
   address: string
   status: StudentStatus
-  createdAt: Date
-  updatedAt: Date
+  createdAt?: Date
+  updatedAt?: Date
 }
 
-const StudentSchema = new Schema<IStudent>({
-  userId:    { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  studentId: { type: String, required: true, unique: true },
-  classId:   { type: Schema.Types.ObjectId, ref: 'Class', required: true },
-  name:      { type: String, required: true },
-  email:     { type: String, required: true },
-  phone:     { type: String, default: '' },
-  dob:       { type: String, default: '' },
-  address:   { type: String, default: '' },
-  status:    { type: String, enum: ['normal','warn1','warn2','warn3','debt','suspended'], default: 'normal' },
-}, { timestamps: true })
+interface StudentCreationAttributes extends Optional<StudentAttributes, 'id' | 'phone' | 'dob' | 'address' | 'status'> {}
 
-export default mongoose.model<IStudent>('Student', StudentSchema)
+class Student extends Model<StudentAttributes, StudentCreationAttributes> implements StudentAttributes {
+  declare id: number
+  declare userId: number
+  declare studentId: string
+  declare classId: number
+  declare name: string
+  declare email: string
+  declare phone: string
+  declare dob: string
+  declare address: string
+  declare status: StudentStatus
+  declare createdAt: Date
+  declare updatedAt: Date
+}
+
+Student.init({
+  id:        { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  userId:    { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  studentId: { type: DataTypes.STRING(50), allowNull: false, unique: true },
+  classId:   { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  name:      { type: DataTypes.STRING(200), allowNull: false },
+  email:     { type: DataTypes.STRING(200), allowNull: false },
+  phone:     { type: DataTypes.STRING(20), defaultValue: '' },
+  dob:       { type: DataTypes.STRING(20), defaultValue: '' },
+  address:   { type: DataTypes.TEXT, defaultValue: '' },
+  status:    { type: DataTypes.ENUM('normal','warn1','warn2','warn3','debt','suspended'), defaultValue: 'normal' },
+}, {
+  sequelize,
+  tableName: 'students',
+})
+
+export default Student

@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { useStudentStore, useGradeStore } from '../../store'
-import { Upload, CheckCircle2, AlertCircle, FileText, Users, BookOpen, Calendar } from 'lucide-react'
+import { Upload, CheckCircle2, AlertCircle, FileText, Users, BookOpen, Calendar, Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { databaseApi } from '../../lib/api'
 
 interface LogEntry {
   type: 'success' | 'error' | 'info'
@@ -27,16 +28,58 @@ export default function Admin() {
     setLogs(prev => [{ type, message, time: new Date().toLocaleTimeString('vi-VN') }, ...prev])
   }
 
-  const handleCSV = (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>, cardType: string) => {
     const file = e.target.files?.[0]
     if (!file) return
+    
+    setIsUploading(true)
     const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      const lines = text.split('\n').filter(Boolean)
-      addLog('success', `Upload ${type}: "${file.name}" — đọc được ${lines.length} dòng`)
+    reader.onload = async (ev) => {
+      try {
+        const text = ev.target?.result as string
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+        if (lines.length < 2) {
+          addLog('error', `File ${file.name} không có dữ liệu`)
+          return
+        }
+
+        // Tự động nhận diện dấu phân cách (phẩy hoặc chấm phẩy)
+        const firstLine = lines[0]
+        const delimiter = firstLine.includes(';') && !firstLine.includes(',') ? ';' : ','
+        const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''))
+        
+        const data = lines.slice(1).map(line => {
+          const values = line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''))
+          const obj: any = {}
+          headers.forEach((h, i) => {
+            if (h) obj[h] = values[i]
+          })
+          return obj
+        })
+
+        addLog('info', `Đang xử lý ${data.length} dòng dữ liệu...`)
+
+        let res: any
+        if (cardType === 'Sinh viên') res = await databaseApi.importStudents(data)
+        if (cardType === 'Bảng điểm') res = await databaseApi.importGrades(data)
+        if (cardType === 'Học kỳ')    res = await databaseApi.importSemesters(data)
+        if (cardType === 'Môn học')   res = await databaseApi.importSubjects(data)
+
+        if (res?.success) {
+          addLog('success', res.message || `Upload ${cardType} thành công`)
+        }
+      } catch (err: any) {
+        addLog('error', `Lỗi: ${err.message}`)
+      } finally {
+        setIsUploading(false)
+      }
     }
-    reader.onerror = () => addLog('error', `Lỗi đọc file ${file.name}`)
+    reader.onerror = () => {
+      addLog('error', `Lỗi đọc file ${file.name}`)
+      setIsUploading(false)
+    }
     reader.readAsText(file)
     e.target.value = ''
   }
@@ -103,9 +146,11 @@ export default function Admin() {
                   />
                   <button
                     onClick={() => card.ref.current?.click()}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    disabled={isUploading}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Upload size={13} /> Upload CSV
+                    {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                    Upload CSV
                   </button>
                 </div>
               </div>

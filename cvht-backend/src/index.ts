@@ -1,7 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import connectDB from './config/database'
+import { connectDB } from './config/database'
+import './models' // Initialize models and associations
 import { errorHandler, notFound } from './middleware/errorHandler'
 
 import authRoutes         from './routes/auth'
@@ -12,6 +13,7 @@ import messageRoutes      from './routes/messages'
 import classRoutes        from './routes/classes'
 import notificationRoutes from './routes/notifications'
 import miscRoutes         from './routes/semesters'
+import databaseRoutes     from './routes/database'
 
 dotenv.config()
 
@@ -46,6 +48,7 @@ app.use('/api/forum',         forumRoutes)
 app.use('/api/messages',      messageRoutes)
 app.use('/api/classes',       classRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/database',      databaseRoutes)
 app.use('/api',               miscRoutes)
 
 // ── 404 & Error Handler ────────────────────────────────────

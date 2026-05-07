@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import User, { IUser } from '../models/User'
+import { User } from '../models'
 
 export interface AuthRequest extends Request {
-  user?: IUser
+  user?: any
 }
 
-interface JwtPayload { id: string; role: string }
+interface JwtPayload { id: number; role: string }
 
 export const protect = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -16,11 +16,11 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     }
     const token = authHeader.split(' ')[1]
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as JwtPayload
-    const user = await User.findById(decoded.id).select('-password')
+    const user = await User.findByPk(decoded.id)
     if (!user || !user.isActive) {
       res.status(401).json({ success: false, message: 'Token không hợp lệ' }); return
     }
-    req.user = user
+    req.user = user.toSafeJSON()
     next()
   } catch {
     res.status(401).json({ success: false, message: 'Token hết hạn hoặc không hợp lệ' })

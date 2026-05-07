@@ -1,71 +1,104 @@
 import { create } from 'zustand'
-import type { Student, ForumPost, Conversation, Notification, Class, Semester, GradeEntry } from '../types'
+import type { Student, ForumPost, Conversation, Notification, Class, Semester, GradeEntry, StudentGradeSummary, StudentStatus } from '../types'
+import { classApi, semesterApi, studentApi } from '../lib/api'
 import {
-  students as initStudents,
   forumPosts as initPosts,
   conversations as initConvs,
   notifications as initNotifs,
-  classes as initClasses,
-  semesters as initSemesters,
   gradeEntries as initGrades,
   gradeSummaries as initSummaries,
 } from '../lib/mockData'
-import type { StudentGradeSummary } from '../types'
 
 // ── App Store ──────────────────────────────────────────────
 interface AppState {
   currentClassId: string
   setCurrentClassId: (id: string) => void
   classes: Class[]
+  fetchClasses: () => Promise<void>
   addClass: (name: string) => void
   semesters: Semester[]
+  fetchSemesters: () => Promise<void>
   currentSemesterId: string
   setCurrentSemesterId: (id: string) => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   currentClassId: 'K23-CNTT-01',
   setCurrentClassId: (id) => set({ currentClassId: id }),
-  classes: initClasses,
-  addClass: (name) => set((s) => ({
-    classes: [...s.classes, { id: name, name, year: new Date().getFullYear(), advisorId: 'cvht001' }]
-  })),
-  semesters: initSemesters,
-  currentSemesterId: 'HK2-2024',
+  classes: [],
+  fetchClasses: async () => {
+    try {
+      const res = await classApi.getAll() as any
+      const classes = res.data || res
+      set({ classes })
+      if (classes.length > 0 && !get().currentClassId) {
+        set({ currentClassId: classes[0].name })
+      }
+    } catch (err) { console.error('Fetch classes error', err) }
+  },
+  addClass: async (name) => {
+    try {
+      await classApi.create({ name, year: new Date().getFullYear() })
+      get().fetchClasses()
+    } catch (err) { console.error('Add class error', err) }
+  },
+  semesters: [],
+  fetchSemesters: async () => {
+    try {
+      const res = await semesterApi.getAll() as any
+      const semesters = res.data || res
+      set({ semesters })
+      if (semesters.length > 0 && !get().currentSemesterId) {
+        set({ currentSemesterId: semesters[0].semesterId })
+      }
+    } catch (err) { console.error('Fetch semesters error', err) }
+  },
+  currentSemesterId: '',
   setCurrentSemesterId: (id) => set({ currentSemesterId: id }),
 }))
 
 // ── Student Store ──────────────────────────────────────────
 interface StudentState {
   students: Student[]
-  addStudents: (emails: string[], classId: string) => void
-  updateStudent: (id: string, data: Partial<Student>) => void
-  removeStudent: (id: string) => void
+  total: number
+  fetchStudents: (params?: Record<string, string>) => Promise<void>
+  addStudent: (data: any) => Promise<void>
+  updateStudent: (id: string, data: Partial<Student>) => Promise<void>
+  removeStudent: (id: string) => Promise<void>
 }
 
-export const useStudentStore = create<StudentState>((set) => ({
-  students: initStudents,
-  addStudents: (emails, classId) => set((s) => ({
-    students: [
-      ...s.students,
-      ...emails.map((email, i) => ({
-        id: `NEW${Date.now()}${i}`,
-        name: email.split('@')[0],
-        email,
-        phone: '—',
-        dob: '',
-        address: '',
-        status: 'normal' as const,
-        classId,
+export const useStudentStore = create<StudentState>((set, get) => ({
+  students: [],
+  total: 0,
+  fetchStudents: async (params) => {
+    try {
+      const res = await studentApi.getAll(params) as any
+      set({ students: res.data || [], total: res.total || 0 })
+    } catch (err) { console.error('Fetch students error', err) }
+  },
+  addStudent: async (data) => {
+    try {
+      await studentApi.create(data)
+      get().fetchStudents({ classId: data.classId })
+    } catch (err) { console.error('Add student error', err) }
+  },
+  updateStudent: async (id, data) => {
+    try {
+      await studentApi.update(id, data)
+      set((s) => ({
+        students: s.students.map(st => st.id === id ? { ...st, ...data } : st)
       }))
-    ]
-  })),
-  updateStudent: (id, data) => set((s) => ({
-    students: s.students.map(st => st.id === id ? { ...st, ...data } : st)
-  })),
-  removeStudent: (id) => set((s) => ({
-    students: s.students.filter(st => st.id !== id)
-  })),
+    } catch (err) { console.error('Update student error', err) }
+  },
+  removeStudent: async (id) => {
+    try {
+      await studentApi.remove(id)
+      set((s) => ({
+        students: s.students.filter(st => st.id !== id),
+        total: s.total - 1
+      }))
+    } catch (err) { console.error('Remove student error', err) }
+  },
 }))
 
 // ── Grade Store ────────────────────────────────────────────
@@ -79,7 +112,6 @@ export const useGradeStore = create<GradeState>(() => ({
   gradeEntries: initGrades,
   gradeSummaries: initSummaries,
   importGrades: (entries) => {
-    // TODO: merge with existing
     console.log('Import', entries.length, 'entries')
   },
 }))

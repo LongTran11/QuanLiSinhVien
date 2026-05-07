@@ -1,21 +1,22 @@
 import { Response } from 'express'
-import ForumPost from '../models/ForumPost'
-import Notification from '../models/Notification'
-import Class from '../models/Class'
+import { ForumPost, Notification, Class, User, Student } from '../models'
 import { AuthRequest } from '../middleware/auth'
-import mongoose from 'mongoose'
 
 // GET /api/forum/:classId
 export const getPosts = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { classId } = req.params
     const { page = '1', limit = '20' } = req.query
-    const skip = (parseInt(String(page)) - 1) * parseInt(String(limit))
-    const [posts, total] = await Promise.all([
-      ForumPost.find({ classId }).sort({ isPinned: -1, createdAt: -1 }).skip(skip).limit(parseInt(String(limit))),
-      ForumPost.countDocuments({ classId }),
-    ])
-    res.json({ success: true, data: posts, total })
+    const offset = (parseInt(String(page)) - 1) * parseInt(String(limit))
+    
+    const { count, rows } = await ForumPost.findAndCountAll({
+      where: { classId: Number(classId) },
+      order: [['isPinned', 'DESC'], ['createdAt', 'DESC']],
+      offset,
+      limit: parseInt(String(limit))
+    })
+    
+    res.json({ success: true, data: rows, total: count })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
     res.status(500).json({ success: false, message })
@@ -27,20 +28,26 @@ export const createPost = async (req: AuthRequest, res: Response): Promise<void>
   try {
     const { classId, content } = req.body
     const post = await ForumPost.create({
-      classId,
-      authorId: req.user!._id,
+      classId: Number(classId),
+      authorId: req.user!.id,
       authorName: req.user!.name,
       authorRole: req.user!.role,
       content,
     })
+    
     // Thông báo cho thành viên trong lớp
-    const cls = await Class.findById(classId).populate('students', '_id')
+    const cls = await Class.findByPk(classId, {
+      include: [{ model: Student, as: 'students', attributes: ['userId'] }]
+    })
+    
     if (cls) {
-      const notifRecipients = cls.students.filter(
-        (s: unknown) => String((s as { _id: mongoose.Types.ObjectId })._id) !== String(req.user!._id)
+      const students = (cls as any).students || []
+      const notifRecipients = students.filter(
+        (s: any) => Number(s.userId) !== Number(req.user!.id)
       )
-      await Notification.insertMany(notifRecipients.map((s: unknown) => ({
-        userId: (s as { _id: mongoose.Types.ObjectId })._id,
+      
+      await Notification.bulkCreate(notifRecipients.map((s: any) => ({
+        userId: s.userId,
         type: 'forum',
         content: `${req.user!.name} đã đăng bài mới trong lớp`,
         link: '/forum',
@@ -56,17 +63,21 @@ export const createPost = async (req: AuthRequest, res: Response): Promise<void>
 // PUT /api/forum/:id/like
 export const toggleLike = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const post = await ForumPost.findById(req.params.id)
+    const post = await ForumPost.findByPk(req.params.id)
     if (!post) { res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' }); return }
-    const userId = req.user!._id as mongoose.Types.ObjectId
-    const liked = post.likes.some(id => String(id) === String(userId))
-    if (liked) {
-      post.likes = post.likes.filter(id => String(id) !== String(userId))
+    
+    const userId = Number(req.user!.id)
+    let likes = [...(post.likes || [])]
+    const likedIndex = likes.indexOf(userId)
+    
+    if (likedIndex !== -1) {
+      likes.splice(likedIndex, 1)
     } else {
-      post.likes.push(userId)
+      likes.push(userId)
     }
-    await post.save()
-    res.json({ success: true, likes: post.likes.length, liked: !liked })
+    
+    await post.update({ likes })
+    res.json({ success: true, likes: likes.length, liked: likedIndex === -1 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
     res.status(500).json({ success: false, message })
@@ -76,17 +87,21 @@ export const toggleLike = async (req: AuthRequest, res: Response): Promise<void>
 // POST /api/forum/:id/comments
 export const addComment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const post = await ForumPost.findById(req.params.id)
+    const post = await ForumPost.findByPk(req.params.id)
     if (!post) { res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' }); return }
+    
     const comment = {
-      _id: new mongoose.Types.ObjectId(),
-      authorId: req.user!._id as mongoose.Types.ObjectId,
+      id: Date.now(), // Simple unique ID for comment
+      authorId: Number(req.user!.id),
       authorName: req.user!.name,
       content: req.body.content,
       createdAt: new Date(),
     }
-    post.comments.push(comment)
-    await post.save()
+    
+    let comments = [...(post.comments || [])]
+    comments.push(comment)
+    
+    await post.update({ comments })
     res.status(201).json({ success: true, data: comment })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
@@ -97,12 +112,14 @@ export const addComment = async (req: AuthRequest, res: Response): Promise<void>
 // DELETE /api/forum/:id
 export const deletePost = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const post = await ForumPost.findById(req.params.id)
+    const post = await ForumPost.findByPk(req.params.id)
     if (!post) { res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' }); return }
-    if (String(post.authorId) !== String(req.user!._id) && req.user!.role !== 'cvht') {
+    
+    if (Number(post.authorId) !== Number(req.user!.id) && req.user!.role !== 'cvht') {
       res.status(403).json({ success: false, message: 'Không có quyền xóa bài viết này' }); return
     }
-    await post.deleteOne()
+    
+    await post.destroy()
     res.json({ success: true, message: 'Đã xóa bài viết' })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'

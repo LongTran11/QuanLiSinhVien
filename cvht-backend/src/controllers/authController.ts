@@ -1,9 +1,9 @@
 import { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
-import User from '../models/User'
+import { User } from '../models'
 import { AuthRequest } from '../middleware/auth'
 
-const signToken = (id: string, role: string): string =>
+const signToken = (id: number, role: string): string =>
   jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   } as jwt.SignOptions)
@@ -12,13 +12,13 @@ const signToken = (id: string, role: string): string =>
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, role, studentId } = req.body
-    const existing = await User.findOne({ email })
+    const existing = await User.findOne({ where: { email } })
     if (existing) {
       res.status(409).json({ success: false, message: 'Email đã được sử dụng' }); return
     }
     const user = await User.create({ name, email, password, role: role || 'student', studentId })
-    const token = signToken(String(user._id), user.role)
-    res.status(201).json({ success: true, token, user })
+    const token = signToken(user.id, user.role)
+    res.status(201).json({ success: true, token, user: user.toSafeJSON() })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
     res.status(500).json({ success: false, message })
@@ -32,7 +32,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!email || !password) {
       res.status(400).json({ success: false, message: 'Vui lòng nhập email và mật khẩu' }); return
     }
-    const user = await User.findOne({ email }).select('+password')
+    const user = await User.findOne({ where: { email } })
     if (!user || !user.isActive) {
       res.status(401).json({ success: false, message: 'Email không tồn tại hoặc tài khoản bị khóa' }); return
     }
@@ -40,9 +40,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!isMatch) {
       res.status(401).json({ success: false, message: 'Mật khẩu không đúng' }); return
     }
-    const token = signToken(String(user._id), user.role)
-    const userObj = user.toJSON()
-    res.json({ success: true, token, user: userObj })
+    const token = signToken(user.id, user.role)
+    res.json({ success: true, token, user: user.toSafeJSON() })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
     res.status(500).json({ success: false, message })
@@ -58,7 +57,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 export const changePassword = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { currentPassword, newPassword } = req.body
-    const user = await User.findById(req.user?._id).select('+password')
+    const user = await User.findByPk(req.user?.id)
     if (!user) { res.status(404).json({ success: false, message: 'Không tìm thấy user' }); return }
     const isMatch = await user.comparePassword(currentPassword)
     if (!isMatch) { res.status(400).json({ success: false, message: 'Mật khẩu hiện tại không đúng' }); return }

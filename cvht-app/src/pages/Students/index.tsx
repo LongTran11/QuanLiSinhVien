@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStudentStore, useAppStore } from '../../store'
 import { StatusBadge } from '../../components/shared/StatusBadge'
 import { Avatar } from '../../components/shared/Avatar'
@@ -8,7 +8,7 @@ import { useMessageStore } from '../../store'
 import type { StudentStatus } from '../../types'
 
 export default function Students() {
-  const { students, addStudents } = useStudentStore()
+  const { students, fetchStudents, addStudent } = useStudentStore()
   const { currentClassId } = useAppStore()
   const { sendMessage } = useMessageStore()
   const navigate = useNavigate()
@@ -19,13 +19,9 @@ export default function Students() {
   const [emailInput, setEmailInput] = useState('')
   const [showDetail, setShowDetail] = useState<string | null>(null)
 
-  const classStudents = students.filter(s => s.classId === currentClassId)
-  const filtered = classStudents.filter(s => {
-    const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase())
-      || s.id.includes(search) || s.email.includes(search)
-    const matchStatus = !statusFilter || s.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  useEffect(() => {
+    fetchStudents({ classId: currentClassId, search, status: statusFilter })
+  }, [currentClassId, search, statusFilter, fetchStudents])
 
   const detailStudent = showDetail ? students.find(s => s.id === showDetail) : null
 
@@ -34,7 +30,7 @@ export default function Students() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Liên lạc sinh viên</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Lớp {currentClassId} — {classStudents.length} sinh viên</p>
+          <p className="text-sm text-gray-500 mt-0.5">Lớp {currentClassId} — {students.length} sinh viên</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -84,7 +80,7 @@ export default function Students() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((s, i) => (
+            {students.map((s, i) => (
               <tr key={s.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -115,8 +111,8 @@ export default function Students() {
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && (
-          <div className="text-center py-10 text-sm text-gray-400">Không tìm thấy sinh viên nào</div>
+        {students.length === 0 && (
+          <div className="text-center py-10 text-sm text-gray-400">Không tìm thấy sinh viên nào trong lớp này</div>
         )}
       </div>
 
@@ -140,7 +136,15 @@ export default function Students() {
               <button
                 onClick={() => {
                   const emails = emailInput.split(/[\n,]/).map(e => e.trim()).filter(Boolean)
-                  if (emails.length) { addStudents(emails, currentClassId); setShowModal(false); setEmailInput('') }
+                  if (emails.length) {
+                    // Gọi API tạo từng sinh viên
+                    Promise.all(emails.map(email => 
+                      addStudent({ email, name: email.split('@')[0], studentId: email.split('@')[0], classId: currentClassId })
+                    )).then(() => {
+                      setShowModal(false)
+                      setEmailInput('')
+                    })
+                  }
                 }}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >

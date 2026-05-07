@@ -1,49 +1,44 @@
 import { Response } from 'express'
-import Message from '../models/Message'
-import Notification from '../models/Notification'
+import { Message, Notification, User } from '../models'
 import { AuthRequest } from '../middleware/auth'
-import mongoose from 'mongoose'
+import { Op } from 'sequelize'
 
 // GET /api/messages/conversations — danh sách hội thoại
 export const getConversations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user!._id
-    // Lấy tất cả message liên quan đến user hiện tại
-    const messages = await Message.find({
-      $or: [{ senderId: userId }, { receiverId: userId }]
-    }).sort({ createdAt: -1 })
+    const userId = Number(req.user!.id)
+    
+    // This is more complex in SQL. We'll fetch recent messages and group in memory for simplicity like before.
+    const messages = await Message.findAll({
+      where: {
+        [Op.or]: [{ senderId: userId }, { receiverId: userId }]
+      },
+      order: [['createdAt', 'DESC']]
+    })
 
-    // Group by partner
-    const convMap = new Map<string, {
-      partnerId: string
-      lastMessage: string
-      lastTime: Date
-      unread: number
-    }>()
+    const convMap = new Map<number, any>()
 
     for (const msg of messages) {
-      const partnerId = String(msg.senderId) === String(userId)
-        ? String(msg.receiverId)
-        : String(msg.senderId)
+      const partnerId = Number(msg.senderId) === userId ? Number(msg.receiverId) : Number(msg.senderId)
 
       if (!convMap.has(partnerId)) {
         convMap.set(partnerId, {
           partnerId,
           lastMessage: msg.content,
           lastTime: msg.createdAt,
-          unread: (!msg.read && String(msg.receiverId) === String(userId)) ? 1 : 0,
+          unread: (!msg.read && Number(msg.receiverId) === userId) ? 1 : 0,
         })
       } else {
         const conv = convMap.get(partnerId)!
-        if (!msg.read && String(msg.receiverId) === String(userId)) conv.unread++
+        if (!msg.read && Number(msg.receiverId) === userId) conv.unread++
       }
     }
 
-    // Populate partner info
-    const User = (await import('../models/User')).default
     const conversations = await Promise.all(
       Array.from(convMap.values()).map(async (conv) => {
-        const partner = await User.findById(conv.partnerId).select('name email role')
+        const partner = await User.findByPk(conv.partnerId, {
+          attributes: ['name', 'email', 'role']
+        })
         return { ...conv, partner }
       })
     )
@@ -58,33 +53,30 @@ export const getConversations = async (req: AuthRequest, res: Response): Promise
 // GET /api/messages/:partnerId — lấy lịch sử chat với 1 người
 export const getMessages = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user!._id
-    const { partnerId } = req.params
+    const userId = Number(req.user!.id)
+    const partnerId = Number(req.params.partnerId)
     const { page = '1', limit = '50' } = req.query
-    const skip = (parseInt(String(page)) - 1) * parseInt(String(limit))
+    const offset = (parseInt(String(page)) - 1) * parseInt(String(limit))
 
-    const [messages, total] = await Promise.all([
-      Message.find({
-        $or: [
+    const { count, rows } = await Message.findAndCountAll({
+      where: {
+        [Op.or]: [
           { senderId: userId, receiverId: partnerId },
           { senderId: partnerId, receiverId: userId },
         ]
-      }).sort({ createdAt: 1 }).skip(skip).limit(parseInt(String(limit))),
-      Message.countDocuments({
-        $or: [
-          { senderId: userId, receiverId: partnerId },
-          { senderId: partnerId, receiverId: userId },
-        ]
-      })
-    ])
+      },
+      order: [['createdAt', 'ASC']],
+      offset,
+      limit: parseInt(String(limit))
+    })
 
     // Đánh dấu đã đọc
-    await Message.updateMany(
-      { senderId: partnerId, receiverId: userId, read: false },
-      { $set: { read: true } }
+    await Message.update(
+      { read: true },
+      { where: { senderId: partnerId, receiverId: userId, read: false } }
     )
 
-    res.json({ success: true, data: messages, total })
+    res.json({ success: true, data: rows, total: count })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
     res.status(500).json({ success: false, message })
@@ -96,13 +88,14 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
   try {
     const { receiverId, content } = req.body
     const message = await Message.create({
-      senderId: req.user!._id,
-      receiverId,
+      senderId: req.user!.id,
+      receiverId: Number(receiverId),
       content,
     })
+    
     // Tạo notification cho người nhận
     await Notification.create({
-      userId: receiverId,
+      userId: Number(receiverId),
       type: 'message',
       content: `${req.user!.name} đã gửi tin nhắn cho bạn`,
       link: '/messages',
@@ -117,7 +110,9 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
 // GET /api/messages/unread-count
 export const getUnreadCount = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const count = await Message.countDocuments({ receiverId: req.user!._id, read: false })
+    const count = await Message.count({ 
+      where: { receiverId: req.user!.id, read: false } 
+    })
     res.json({ success: true, count })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Lỗi server'
